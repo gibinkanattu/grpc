@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package dataserver;
+
+service DataTransmission {
+  // unary
+  rpc UnaryServer(Data) returns ( Acknowledgement) {}
+
+  // Server Streaming
+  rpc ServerStreaming(Data) returns (stream  Data) {}
+
+  // Client Streaming
+  rpc ClientStreaming(stream Data) returns ( Data) {}
+
+  // Bi-Directional Streaming
+  rpc ChatStreaming(stream Data) returns (stream Data) {}
+
+}
+//request message containing data
+message Data {
+  string request_msg = 1;
+}
+// response message containing Acknowledgement
+message Acknowledgement{
+  bool status = 1; // status to indiacate whether message received at server
+  string message = 2; // message from server
+}
