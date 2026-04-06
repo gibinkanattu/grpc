@@ -1,0 +1,8 @@
+{
+    "server_name": "Data Server",
+    "server_address": "0.0.0.0:50051",
+    "authentication_enabled": false,
+    "server-cert":"certs/server-cert.pem",
+    "server-key":"certs/server-key.pem",
+    "token":"eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJvcmdhbmlzYXRpb24iOiJzZWFrZXIiLCJwcm9qZWN0IjoiYXRsYXMiLCJhcHAiOiJkc2lzIiwiaWF0IjoxNjk3NDE0NDAwLCJlYXQiOjIwMTQ0MTYwMDB9.l2xrQNWtLcQdAcCDGkbVCVp8096OSAQwKofxaPfBQijxGkSUAFeKaIn0zhMtXucziSwGhI8OacmeNQlK57lQ_X72eA3lnu-YEbYh-TdKnKmIObWV-fLA8DLAVK5YSM6Cg5xKz2CKSWYfh1R4urwhdHZZRaoZy_QBay20UcmF94jTwz1niHczCfh4vLdV0IGxjM5wmlh5q30cBiV4lhNPFfLEvRg03RUCaIVxUAWY5p6_VJT0UuSr_-QOrDqMpZQCBipdwtow_mNJJvhNehI9BIgE1by1QW30K6q5e4Wi_3QiRpnYGXWIveGpwUYXDBWuGYnmsHmtCoI3FLiiA76uxg"
+  }

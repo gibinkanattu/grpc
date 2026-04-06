@@ -1,0 +1,49 @@
+FROM rust:1.86 as builder
+
+RUN apt-get update
+ENV DEBIAN_FRONTEND noninteractive
+ENV ACCEPT_EULA=Y
+RUN apt-get update -y\
+  && apt-get install -y --no-install-recommends curl gcc g++ gnupg unixodbc-dev\
+  && apt-get install -y odbcinst1debian2 unixodbc libodbc1
+
+
+RUN apt install build-essential libssl-dev pkg-config wget unzip -y
+RUN wget https://github.com/protocolbuffers/protobuf/releases/download/v30.2/protoc-30.2-linux-x86_64.zip
+RUN unzip -d protoc protoc*.zip
+RUN cp protoc/bin/protoc /usr/bin
+RUN protoc --version  #30.2 is currently being used
+RUN apt install -y libsqlite3-dev
+
+# 1. Create a new empty shell project
+RUN USER=root cargo new --bin dataserver
+WORKDIR /dataserver
+
+# 2. Copy our manifests
+COPY ./Cargo.toml ./Cargo.toml
+COPY ./Cargo.lock ./Cargo.lock
+
+# 3. Build only dependencies to cache them for release.
+RUN cargo build --release
+RUN rm src/*
+
+# 4. Now that the dependency is build, copy our source code
+COPY . .
+
+# 5. Build for release
+# RUN rm -r target/release/deps/
+RUN cargo build --release
+RUN cp target/release/server* .
+# RUN rm -r target
+# RUN rm Cargo.toml Cargo.lock server.d
+RUN ls -lh
+
+# Our Final base
+FROM debian:bookworm-slim
+ENV ACCEPT_EULA=Y
+RUN apt-get update && \
+    apt-get install -y libssl-dev && \
+    rm -rf /var/lib/apt/lists/*
+COPY --from=builder server .
+# set the startup command to run our binary
+CMD ["./server"]

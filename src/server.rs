@@ -1,17 +1,27 @@
+use read_config::read_certs;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::codec::CompressionEncoding;
-use tonic::{Request, Response, Status, transport::Server};
+use tonic::service::interceptor::{self, InterceptedService};
+use tonic::{
+    Request, Response, Status,
+    metadata::MetadataValue,
+    transport::{
+        Identity, Server, ServerTlsConfig,
+        server::{TcpConnectInfo, TlsConnectInfo},
+    },
+};
 use tower_http::validate_request::ValidateRequestHeaderLayer;
+mod read_config;
 pub mod dataserver {
     tonic::include_proto!("dataserver");
 }
+use clap::Parser;
 use dataserver::data_transmission_server::{DataTransmission, DataTransmissionServer};
 use dataserver::{Acknowledgement, Data};
-
 // defining a struct for our service
 #[derive(Default)]
-pub struct MyDataTransmission {}
+pub struct MyDataTransmission;
 
 // implementing rpc for service defined in .proto
 #[tonic::async_trait]
@@ -103,17 +113,75 @@ impl DataTransmission for MyDataTransmission {
     }
 }
 
+// Checking Authentication with interceptors Meta Data
+pub fn check_auth(req: Request<()>) -> Result<Request<()>, Status> {
+    let token: MetadataValue<_> = "secret_value"
+        .parse()
+        .expect("Expected MetadataValue to be str");
+
+    match req.metadata().get("secret_key") {
+        Some(t) if token == t => Ok(req),
+        _ => Err(Status::unauthenticated("No valid auth secret")),
+    }
+}
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(short, long)]
+    file: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // defining address for our service
-    let addr = "[::1]:50051".parse().unwrap();
-    // creating a service
-    let say = MyDataTransmission::default();
-    println!("Server listening on {}", addr);
-    // adding our service to our server.
-    Server::builder()
-        .add_service(DataTransmissionServer::new(say))
-        .serve(addr)
-        .await?;
-    Ok(())
+    let args = Args::parse();
+    let config = read_config::read_config(args.file);
+    let server_address = config["server_address"]
+        .as_str()
+        .unwrap_or("0.0.0.0:50051")
+        .parse()?;
+
+    // check if security needs to be implemented
+    let tls_enabled = config["authentication_enabled"].as_bool().ok_or("authentication_enabled option not configured correctly in config file!!, Type expected boolean.")?;
+
+    let result = if tls_enabled == true {
+        // If security enabled -> Add TLS, JWT Token and secret key-value pair authentications
+        let cert = read_certs(config.get("server-cert").unwrap().to_string().replace("\"", "")).unwrap();
+        let key = read_certs(config.get("server-key").unwrap().to_string().replace("\"", "")).unwrap();
+        let identity = Identity::from_pem(cert, key);
+        let jwt_token = config.get("token").unwrap().to_string().replace("\"", "");
+
+        // Adding compression to the service
+        let svc = DataTransmissionServer::new(MyDataTransmission)
+            .accept_compressed(CompressionEncoding::Gzip)
+            .send_compressed(CompressionEncoding::Gzip);
+        // Adding Interceptor to service
+        let svc_compressed = InterceptedService::new(svc, check_auth);
+
+        println!("Building server with TLS and security {:?}",server_address);
+        // Build server
+        Server::builder()
+            .max_concurrent_streams(1000) // max concurrent streams
+            .concurrency_limit_per_connection(100) //the maximum number of connections allowed per client
+            .max_frame_size(1 * 1024 * 1024) // the maximum frame size 1 Mb
+            .tls_config(ServerTlsConfig::new().identity(identity))?
+            .layer(ValidateRequestHeaderLayer::bearer(&jwt_token))
+            .add_service(svc_compressed)
+            .serve(server_address)
+            .await?;
+        Ok(())
+    } else {
+        let data_transmission = MyDataTransmission::default();
+        let svc = DataTransmissionServer::new(data_transmission)
+            .accept_compressed(CompressionEncoding::Gzip)
+            .send_compressed(CompressionEncoding::Gzip);
+        println!("Building server without TLS and security {:?}",server_address);
+        Server::builder()
+            .add_service(svc)
+            .serve(server_address)
+            .await?;
+        Ok(())
+    };
+
+    result
 }
